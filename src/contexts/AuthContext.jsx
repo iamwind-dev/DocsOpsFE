@@ -133,106 +133,48 @@ export const AuthProvider = ({ children }) => {
       isSigningInRef.current = true;
       console.log('🔵 signIn started, isSigningInRef set to true');
       
-      const result = await authAPI.login(email, password);
+      // Đăng nhập trực tiếp qua Supabase (không qua backend)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (!result.success) {
+      if (error) {
         isSigningInRef.current = false;
-        throw new Error(result.message || 'Đăng nhập thất bại');
+        throw new Error(error.message || 'Đăng nhập thất bại');
       }
 
-      // Backend trả về session và profile
-      if (result.data?.session?.access_token) {
-        const profileData = result.data?.profile;
+      // Supabase trả về session và user
+      if (data.session && data.user) {
+        console.log('✅ Logged in successfully via Supabase:', data.user.email);
         
-        // QUAN TRỌNG: Set profile và ref TRƯỚC khi setSession
-        if (profileData) {
-          console.log('✅ Profile từ backend response:', profileData);
-          console.log('✅ Role:', profileData.role);
-          
-          // Lưu vào ref TRƯỚC (quan trọng nhất)
-          profileFromBackendRef.current = profileData;
-          console.log('✅ Profile ref set BEFORE setSession');
-          console.log('✅ profileFromBackendRef.current after set:', profileFromBackendRef.current);
-          
-          // Set profile state TRƯỚC khi setSession
-          setUserProfile(profileData);
-          console.log('✅ Profile state set BEFORE setSession, role:', profileData.role);
-          
-          // Đợi lâu hơn để đảm bảo state và ref được set hoàn toàn
-          // Và để onAuthStateChange có thời gian check ref
-          await new Promise(resolve => setTimeout(resolve, 300));
-          console.log('✅ Waited 300ms, ref still exists:', !!profileFromBackendRef.current);
-        }
-        
-        // Set session vào Supabase client (sẽ trigger onAuthStateChange NGAY LẬP TỨC)
-        console.log('🔵 About to call setSession, ref exists:', !!profileFromBackendRef.current);
-        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-          access_token: result.data.session.access_token,
-          refresh_token: result.data.session.refresh_token,
-        });
-        console.log('🔵 setSession completed, ref exists:', !!profileFromBackendRef.current);
-
-        if (sessionError) {
-          isSigningInRef.current = false;
-          throw sessionError;
-        }
-
-        // Set user
-        if (sessionData.user) {
-          setUser(sessionData.user);
-          
-          // Đảm bảo profile được set lại (sau khi setSession)
-          if (profileData) {
-            // Đảm bảo ref vẫn còn
+        // Load profile từ backend API
+        try {
+          const profileResult = await authAPI.getMe();
+          if (profileResult?.data?.profile) {
+            const profileData = profileResult.data.profile;
+            console.log('✅ Profile từ backend:', profileData);
             profileFromBackendRef.current = profileData;
             setUserProfile(profileData);
-            console.log('✅ Profile set AFTER setSession, role:', profileData.role);
-            
-            // Set lại nhiều lần để đảm bảo persist
-            setTimeout(() => {
-              setUserProfile(profileData);
-              console.log('✅ Profile re-set (200ms):', profileData.role);
-            }, 200);
-            setTimeout(() => {
-              setUserProfile(profileData);
-              console.log('✅ Profile re-set (500ms):', profileData.role);
-            }, 500);
-            setTimeout(() => {
-              setUserProfile(profileData);
-              console.log('✅ Profile re-set (1000ms):', profileData.role);
-              isSigningInRef.current = false; // Clear flag sau khi hoàn tất
-            }, 1000);
-          } else {
-            // Nếu không có profile trong response, load từ database
-            console.warn('⚠️ Profile không có trong response, thử load từ database...');
-            await new Promise(resolve => setTimeout(resolve, 500));
-            const profile = await loadUserProfile(sessionData.user.id);
-            if (profile) {
-              setUserProfile(profile);
-              console.log('✅ Profile loaded after login:', profile);
-              console.log('✅ Role:', profile.role);
-            } else {
-              console.warn('⚠️ Profile không tìm thấy sau khi đăng nhập');
-            }
-            isSigningInRef.current = false;
           }
-          
-          console.log('✅ Login successful, user and profile set');
-          // Clear flag ngay sau khi login thành công
-          isSigningInRef.current = false;
-          // Đảm bảo loading được clear ngay (không đợi onAuthStateChange)
-          setLoading(false);
-          return sessionData;
+        } catch (profileError) {
+          console.warn('⚠️ Không load được profile từ backend:', profileError);
         }
 
+        // onAuthStateChange sẽ tự động update user và profile
+        console.log('✅ Session set, waiting for onAuthStateChange...');
+        
+        // Đợi một chút để onAuthStateChange xử lý
+        await new Promise(resolve => setTimeout(resolve, 500));
         isSigningInRef.current = false;
-        throw new Error('Không nhận được user từ session');
+        return data;
       }
-      
+
       isSigningInRef.current = false;
+      throw new Error('Không nhận được session từ Supabase');
     } catch (error) {
-      isSigningInRef.current = false;
       console.error('Sign in error:', error);
+      isSigningInRef.current = false;
       throw error;
     }
   };
@@ -267,7 +209,6 @@ export const AuthProvider = ({ children }) => {
       console.log('🗑️ Cleared sessionStorage');
 
       // Sau đó mới sign out từ Supabase
-      // Không dùng scope: 'global' vì có thể không được support ở tất cả environments
       const { error: signOutError } = await supabase.auth.signOut();
       
       if (signOutError) {

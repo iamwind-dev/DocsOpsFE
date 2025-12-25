@@ -13,6 +13,9 @@ import Dashboard from './pages/Dashboard';
 import Documents from './pages/Documents';
 import DocumentsCategory from './pages/DocumentsCategory';
 import ESignature from './pages/ESignature';
+import SignatureManagementPage from './pages/SignatureManagementPage';
+import SignDocumentPage from './pages/SignDocumentPage';
+import ViewDocumentPage from './pages/ViewDocumentPage';
 import Audit from './pages/Audit';
 import Storage from './pages/Storage';
 import Settings from './pages/Settings';
@@ -95,6 +98,10 @@ const App = () => {
         <Route path="/contact" element={<Layout><Contact /></Layout>} />
         <Route path="/features" element={<Layout><Features /></Layout>} />
         
+        {/* Public route - Sign document from email link */}
+        <Route path="/sign" element={<SignDocumentPage />} />
+        <Route path="/view-document/:requestId" element={<ViewDocumentPage />} />
+        
         {/* Dashboard routes - Protected */}
         <Route 
           path="/dashboard" 
@@ -132,6 +139,16 @@ const App = () => {
             <PrivateRoute>
               <DashboardLayout>
                 <ESignature />
+              </DashboardLayout>
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/signatures" 
+          element={
+            <PrivateRoute>
+              <DashboardLayout>
+                <SignatureManagementPage />
               </DashboardLayout>
             </PrivateRoute>
           } 
